@@ -8,3 +8,5 @@ Minimalist audio spectrum visualizer. Made in Python with GLUX and ModernGL.
 - Install ModernGL with `pip install moderngl`
 - Install NumPy with `pip install numpy`
 - Run `main.py`
+
+Note: The program may crash when run for the first time on some systems. In that case, just try running the program again. Feel free to share any persistent error messages you find while running the program.
