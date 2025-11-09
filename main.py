@@ -97,7 +97,7 @@ class App:
         # Number of samples we see from the start point i.e. sliding window size
         self.frame_size = 4096 * 2
 
-        self.stream = self.oal_ctx.create_stream()
+        self.stream = self.oal_ctx.stream()
         self.stream_offset = 0
 
     def load_file(self):
@@ -107,13 +107,13 @@ class App:
                         )
         if file_path and not self.filename == str(file_path):
             self.filename = str(file_path)
-            self.music_data = self.oal_ctx.decode_file(self.filename)
+            self.music_data = self.oal_ctx.decode(self.filename)
             self.n_channels = self.music_data.channels
             self.sample_width = self.music_data.bits_per_sample // 8
             self.frame_rate = self.music_data.sample_rate
-            self.n_frames = self.music_data.n_samples()
-            self.raw_data = self.music_data.raw_data()
-            self.duration = self.music_data.duration()
+            self.n_frames = self.music_data.nsamples
+            self.duration = self.music_data.duration
+            self.raw_data = self.music_data.to_bytes()
             self.bytes_per_sample = self.n_channels * self.sample_width
             self.bar_max = 1
             return True
@@ -123,7 +123,7 @@ class App:
         self.program["time"] = time.time() - self.init_time
         if self.stream.is_playing():
             self.stream.update()
-        self.stream_offset = self.stream.get_offset_seconds()
+        self.stream_offset = self.stream.get_offset()
 
         if self.stream_offset:
             # Get index of starting sample point
