@@ -43,7 +43,7 @@ def compute_spectrum(chunk, sample_rate):
     return freqs, spectrum
 
 # Converts the spectrum into logarithmically-spaced bars
-def make_bars(spectrum, freqs, num_bars=64):
+def make_bars(spectrum, freqs, num_bars=128):
     bars = []
     min_freq, max_freq = 20, 20000
     log_min, log_max = np.log10(min_freq), np.log10(max_freq)
@@ -78,7 +78,7 @@ class App:
         imgui.get_io().font_global_scale = 2.0
 
         # Reserve bytes to be overwritten later
-        self.vbo = self.ctx.buffer(reserve=2 * 4 * 2 * 4 * 64)
+        self.vbo = self.ctx.buffer(reserve=2 * 4 * 2 * 4 * 128)
         self.program = self.ctx.program(load_shader("vert.glsl"), load_shader("frag.glsl"))
         self.vao = self.ctx.vertex_array(self.program, self.vbo, 'in_pos')
 
@@ -95,7 +95,7 @@ class App:
         self.bar_max = 1
 
         # Number of samples we see from the start point i.e. sliding window size
-        self.frame_size = 4096
+        self.frame_size = 4096 * 2
 
         self.stream = self.oal_ctx.create_stream()
         self.stream_offset = 0
@@ -148,7 +148,8 @@ class App:
             freqs, spectrum = compute_spectrum(chunk, self.frame_rate)
             
             # bars: collection of mean amplitudes for each frequency subinterval
-            bars = make_bars(spectrum, freqs)
+            n = 80
+            bars = make_bars(spectrum, freqs)[:n]
 
             # Normalize bar heights based on the max bar size seen yet
             for i, bar in enumerate(bars):
@@ -161,13 +162,13 @@ class App:
                 y = bar / self.bar_max
                 if y > 0:
                     # Mirrored the Ist quadrant across X and Y axes
-                    p = ((i - blanks) / 64, 0.5 * bar / self.bar_max)
+                    p = ((i - blanks) / 70, 0.5 * bar / self.bar_max)
                     data.extend([p[0], 0, p[0], p[1]])
-                    p = ((i - blanks) / 64, -0.5 * bar / self.bar_max)
+                    p = ((i - blanks) / 70, -0.5 * bar / self.bar_max)
                     data.extend([p[0], 0, p[0], p[1]])
-                    p = (-(i - blanks) / 64, 0.5 * bar / self.bar_max)
+                    p = (-(i - blanks) / 70, 0.5 * bar / self.bar_max)
                     data.extend([p[0], 0, p[0], p[1]])
-                    p = (-(i - blanks) / 64, -0.5 * bar / self.bar_max)
+                    p = (-(i - blanks) / 70, -0.5 * bar / self.bar_max)
                     data.extend([p[0], 0, p[0], p[1]])
                 else:
                     blanks += 1
