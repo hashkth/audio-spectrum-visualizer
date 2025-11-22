@@ -66,6 +66,7 @@ class App:
 
     def __init__(self, width, height, title):
         self.window = glux.Window(width, height, title)
+        self.window.set_events_callback(self.events)
         self.window.set_process_callback(self.process)
         self.window.set_render_callback(self.render)
         self.window.set_render_ui_callback(self.render_ui)
@@ -83,6 +84,7 @@ class App:
         self.vao = self.ctx.vertex_array(self.program, self.vbo, 'in_pos')
 
         self.filename = ""
+        self.render_imgui = True
 
         self.music_data = None
         self.n_channels = 0
@@ -118,6 +120,11 @@ class App:
             self.bar_max = 1
             return True
         return False
+    
+    def events(self):
+        if glux.keyboard.action == glux.actions.PRESS:
+            if glux.keyboard.key == glux.keys.K_H:
+                self.render_imgui = not self.render_imgui
 
     def process(self):
         self.program["time"] = time.time() - self.init_time
@@ -177,31 +184,32 @@ class App:
 
     def render(self):
         self.ctx.clear(0.0, 0.0, 0.0, 1.0)
-        if self.stream_offset:
+        if self.stream_offset and self.stream.is_playing():
             self.vao.render(mgl.LINES)
 
     def render_ui(self):
-        imgui.begin("Playback")
-        if imgui.button("Load  "):
-            self.stream.pause()
-            loaded = self.load_file()
-            if loaded :
-                self.stream.stop()
-            else:
-                self.stream.resume()
-        if imgui.button("Play  "):
-            if self.filename:
-                self.stream.play(self.filename, loop=True)
-        if imgui.button("Pause "):
-            if self.stream.is_playing():
+        if self.render_imgui:
+            imgui.begin("Playback")
+            if imgui.button("Load  "):
                 self.stream.pause()
-        if imgui.button("Resume"):
-            if self.stream.is_paused():
-                self.stream.resume()
-        if imgui.button("Stop  "):
-            if self.stream.is_playing():
-                self.stream.stop()
-        imgui.end()
+                loaded = self.load_file()
+                if loaded :
+                    self.stream.stop()
+                else:
+                    self.stream.resume()
+            if imgui.button("Play  "):
+                if self.filename:
+                    self.stream.play(self.filename, loop=False)
+            if imgui.button("Pause "):
+                if self.stream.is_playing():
+                    self.stream.pause()
+            if imgui.button("Resume"):
+                if self.stream.is_paused():
+                    self.stream.resume()
+            if imgui.button("Stop  "):
+                if self.stream.is_playing():
+                    self.stream.stop()
+            imgui.end()
 
     def run(self):
         self.window.run()
