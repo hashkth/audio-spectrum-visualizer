@@ -8,14 +8,15 @@ from tkinter import filedialog
 root = tk.Tk()
 root.withdraw()
 
-# Custom configuration for OpenAL, disabling HRTF Filter
-os.environ["ALSOFT_CONF"] = "alsoft.ini"
-
 import glux
 from glux import imgui
 
 import moderngl as mgl
+import pyopenalsoft as al
 import numpy as np
+
+# Custom configuration for OpenAL, disabling HRTF Filter
+os.environ["ALSOFT_CONF"] = "alsoft.ini"
 
 # Shader loading utility
 def load_shader(filename: str):
@@ -73,7 +74,9 @@ class App:
 
         self.init_time = time.time()
 
-        self.oal_ctx = glux.oal.Context()
+        al.init()
+        self.device = al.Device()
+        self.oal_ctx = al.Context(self.device)
         self.ctx = mgl.create_context()
         self.ctx.line_width = 3
         imgui.get_io().font_global_scale = 2.0
@@ -99,7 +102,7 @@ class App:
         # Number of samples we see from the start point i.e. sliding window size
         self.frame_size = 4096 * 2
 
-        self.stream = self.oal_ctx.stream()
+        self.stream = None
         self.stream_offset = 0
 
     def load_file(self):
@@ -109,13 +112,13 @@ class App:
                         )
         if file_path and not self.filename == str(file_path):
             self.filename = str(file_path)
-            self.music_data = self.oal_ctx.decode(self.filename)
+            self.music_data = al.AudioData(str(file_path))
             self.n_channels = self.music_data.channels
             self.sample_width = self.music_data.bits_per_sample // 8
             self.frame_rate = self.music_data.sample_rate
-            self.n_frames = self.music_data.nsamples
+            self.n_frames = self.music_data.total_frames
             self.duration = self.music_data.duration
-            self.raw_data = self.music_data.to_bytes()
+            self.raw_data = self.music_data.decode()
             self.bytes_per_sample = self.n_channels * self.sample_width
             self.bar_max = 1
             return True
@@ -128,86 +131,88 @@ class App:
 
     def process(self):
         self.program["time"] = time.time() - self.init_time
-        if self.stream.is_playing():
-            self.stream.update()
-        self.stream_offset = self.stream.get_offset()
 
-        if self.stream_offset:
-            # Get index of starting sample point
-            sample_index = int(self.stream_offset * self.frame_rate) % self.n_frames
-            
-            # Sample index --> bytes from start
-            start_byte = sample_index * self.bytes_per_sample
+        if self.stream:
+            if self.stream.playing:
+                self.stream.update()
+            self.stream_offset = self.stream.offset
 
-            # Start byte + bytes corresponding to frame size
-            end_byte = start_byte + self.frame_size * self.bytes_per_sample
+            if self.stream_offset:
+                # Get index of starting sample point
+                sample_index = int(self.stream_offset * self.frame_rate) % self.n_frames
+                
+                # Sample index --> bytes from start
+                start_byte = sample_index * self.bytes_per_sample
 
-            # Get the slice of raw data we want to process
-            raw_slice = self.raw_data[start_byte:end_byte]
+                # Start byte + bytes corresponding to frame size
+                end_byte = start_byte + self.frame_size * self.bytes_per_sample
 
-            # Process the slice and ultimately get bars
-            audio_data = np.frombuffer(raw_slice, dtype=np.int16)
-            if self.n_channels == 2:
-                audio_data = audio_data.reshape(-1, 2)
-                audio_data = audio_data.mean(axis=1).astype(np.int16)
+                # Get the slice of raw data we want to process
+                raw_slice = self.raw_data[start_byte:end_byte]
 
-            chunk = audio_data
-            freqs, spectrum = compute_spectrum(chunk, self.frame_rate)
-            
-            # bars: collection of mean amplitudes for each frequency subinterval
-            n = 80
-            bars = make_bars(spectrum, freqs)[:n]
+                # Process the slice and ultimately get bars
+                audio_data = np.frombuffer(raw_slice, dtype=np.int16)
+                if self.n_channels == 2:
+                    audio_data = audio_data.reshape(-1, 2)
+                    audio_data = audio_data.mean(axis=1).astype(np.int16)
 
-            # Normalize bar heights based on the max bar size seen yet
-            for i, bar in enumerate(bars):
-                if bar > self.bar_max:
-                    self.bar_max = bar
+                chunk = audio_data
+                freqs, spectrum = compute_spectrum(chunk, self.frame_rate)
+                
+                # bars: collection of mean amplitudes for each frequency subinterval
+                n = 80
+                bars = make_bars(spectrum, freqs)[:n]
 
-            data = []
-            blanks = 0
-            for i, bar in enumerate(bars):
-                y = bar / self.bar_max
-                if y > 0:
-                    # Mirrored the Ist quadrant across X and Y axes
-                    p = ((i - blanks) / 70, 0.5 * bar / self.bar_max)
-                    data.extend([p[0], 0, p[0], p[1]])
-                    p = ((i - blanks) / 70, -0.5 * bar / self.bar_max)
-                    data.extend([p[0], 0, p[0], p[1]])
-                    p = (-(i - blanks) / 70, 0.5 * bar / self.bar_max)
-                    data.extend([p[0], 0, p[0], p[1]])
-                    p = (-(i - blanks) / 70, -0.5 * bar / self.bar_max)
-                    data.extend([p[0], 0, p[0], p[1]])
-                else:
-                    blanks += 1
-            self.vertices = np.array(data, dtype = 'f4')
-            self.vbo.write(self.vertices)
+                # Normalize bar heights based on the max bar size seen yet
+                for i, bar in enumerate(bars):
+                    if bar > self.bar_max:
+                        self.bar_max = bar
+
+                data = []
+                blanks = 0
+                for i, bar in enumerate(bars):
+                    y = bar / self.bar_max
+                    if y > 0:
+                        # Mirrored the Ist quadrant across X and Y axes
+                        p = ((i - blanks) / 70, 0.5 * bar / self.bar_max)
+                        data.extend([p[0], 0, p[0], p[1]])
+                        p = ((i - blanks) / 70, -0.5 * bar / self.bar_max)
+                        data.extend([p[0], 0, p[0], p[1]])
+                        p = (-(i - blanks) / 70, 0.5 * bar / self.bar_max)
+                        data.extend([p[0], 0, p[0], p[1]])
+                        p = (-(i - blanks) / 70, -0.5 * bar / self.bar_max)
+                        data.extend([p[0], 0, p[0], p[1]])
+                    else:
+                        blanks += 1
+                self.vertices = np.array(data, dtype = 'f4')
+                self.vbo.write(self.vertices)
 
     def render(self):
         self.ctx.clear(0.0, 0.0, 0.0, 1.0)
-        if self.stream_offset and self.stream.is_playing():
+        if self.stream:
             self.vao.render(mgl.LINES)
 
     def render_ui(self):
         if self.render_imgui:
             imgui.begin("Playback")
             if imgui.button("Load  "):
-                self.stream.pause()
+                if self.stream:
+                    self.stream.pause()
                 loaded = self.load_file()
                 if loaded :
+                    self.stream = al.Stream(self.filename)
                     self.stream.stop()
                 else:
-                    self.stream.resume()
+                    if self.stream:
+                        self.stream.play()
             if imgui.button("Play  "):
                 if self.filename:
-                    self.stream.play(self.filename, loop=False)
+                    self.stream.play()
             if imgui.button("Pause "):
-                if self.stream.is_playing():
+                if self.filename:
                     self.stream.pause()
-            if imgui.button("Resume"):
-                if self.stream.is_paused():
-                    self.stream.resume()
             if imgui.button("Stop  "):
-                if self.stream.is_playing():
+                if self.filename:
                     self.stream.stop()
             imgui.end()
 
