@@ -3,9 +3,10 @@ Minimalist audio spectrum visualizer. Made in Python with GLUX and ModernGL.
 <img width="1317" height="764" alt="Image" src="https://github.com/user-attachments/assets/e305f9a5-a712-4339-9ce1-ce6c316523f9" />
 
 ## Running Instructions
-- Install Python 3.11+
+- Install Python 3.11 / 3.12 / 3.13
 - Install GLUX with: `pip install glux`
 - Install ModernGL with `pip install moderngl`
+- Install PyOpenALSoft with `pip install pyopenalsoft`
 - Install NumPy with `pip install numpy`
 - Run `main.py`
 
